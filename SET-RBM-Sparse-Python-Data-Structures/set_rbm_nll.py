@@ -275,7 +275,7 @@ if __name__ == "__main__":
 
     # Setting random seed
     if seed != -1:
-        filebase += f"run{seed}"
+        filebase += f"_run{seed}"
         np.random.seed(seed)
 
 
@@ -304,8 +304,9 @@ if __name__ == "__main__":
     
     # get reconstructed data
     # please note the very very small difference in error between this one and the one computing during training. This is the (insignificant) effect of the removed weights which are closest to zero
-    reconstructions=setrbm.getRecontructedVisibleNeurons(X_test)
-    print ("\nReconstruction error of the last epoch on the testing data: ",np.mean((reconstructions-X_test)*(reconstructions-X_test)))
+    if hasTestData:
+        reconstructions=setrbm.getRecontructedVisibleNeurons(X_test)
+        print ("\nReconstruction error of the last epoch on the testing data: ",np.mean((reconstructions-X_test)*(reconstructions-X_test)))
 
     # # get hidden neurons values to be used, for instance, with a classifier
     # hiddens=setrbm.getHiddenNeurons(X_test)
