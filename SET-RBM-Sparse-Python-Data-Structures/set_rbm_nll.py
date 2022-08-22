@@ -108,6 +108,9 @@ class SET_RBM:
         self.weight_decay = None #weight decay
         self.zeta = None  # the fraction of the weights removed
 
+        self.epochs = None #number of training epochs
+        self.batch_size = None #size of training batches
+
         self.W=createSparseWeights(self.epsilon,self.noVisible,self.noHiddens) # create weights sparse matrix
         self.bV=np.zeros(self.noVisible) #biases of the visible neurons
         self.bH = np.zeros(self.noHiddens) #biases of the hidden neurons
@@ -120,12 +123,14 @@ class SET_RBM:
         self.learning_rate=learning_rate #learning rate
         self.zeta=zeta #control the fraction of weights removed
 
+        self.epochs = epochs
+        self.batch_size = batch_size
 
         minimum_reconstructin_error=100000
-        metrics=np.zeros((epochs,2))
+        metrics=np.zeros((self.epochs,2))
         reconstruction_error_train=0
 
-        for i in range (epochs):
+        for i in range (self.epochs):
             # Shuffle the data
             seed = np.arange(X_train.shape[0])
             np.random.shuffle(seed)
@@ -133,13 +138,13 @@ class SET_RBM:
 
             # training
             t1 = datetime.datetime.now()
-            for j in range(x_.shape[0] // batch_size):
-                k = j * batch_size
-                l = (j + 1) * batch_size
+            for j in range(x_.shape[0] // self.batch_size):
+                k = j * self.batch_size
+                l = (j + 1) * self.batch_size
                 reconstruction_error_train+=self.learn(x_[k:l])
             t2 = datetime.datetime.now()
 
-            reconstruction_error_train=reconstruction_error_train/(x_.shape[0] // batch_size)
+            reconstruction_error_train=reconstruction_error_train/(x_.shape[0] // self.batch_size)
             metrics[i, 0] = reconstruction_error_train
             print ("\nSET-RBM Epoch ",i)
             print ("Training time: ",t2-t1,"; Reconstruction error train: ",reconstruction_error_train)
@@ -156,10 +161,10 @@ class SET_RBM:
 
             # change connectivity pattern
             t5 = datetime.datetime.now()
-            if (i < epochs - 1):
+            if (i < self.epochs - 1):
                 self.weightsEvolution(addition=True)
             else:
-                if (i == epochs - 1): #during the last epoch just connections removal is performed. We did not add new random weights to favour statistics on the connections
+                if (i == self.epochs - 1): #during the last epoch just connections removal is performed. We did not add new random weights to favour statistics on the connections
                     self.weightsEvolution(addition=False)
             t6 = datetime.datetime.now()
             print("Weights evolution time ", t6 - t5)
@@ -248,6 +253,39 @@ class SET_RBM:
         self.bV=self.bV+self.learning_rate*(np.mean(self.DV,axis=0)-np.mean(self.MV,axis=0))-self.weight_decay*self.bV
         self.bH = self.bH + self.learning_rate * (np.mean(self.DH, axis=0) - np.mean(self.MH, axis=0)) - self.weight_decay * self.bH
 
+    def save(self, filename="setrbm.rbm"):
+        with open(filename, "w") as f:
+            f.write("# RBM parameters\n")
+            f.write("# Contains sizes (X and H), weights and biases (visible, then hidden). ")
+            f.write("Does not save connectivity separated\n")
+            
+            if self.learning_rate:
+                f.write(f"# CD-{self.lengthMarkovChain}, learning rate {self.learning_rate}. ")
+                f.write(f"{self.epochs} iterations (epochs), batches of {self.batch_size}.\n")
+                f.write(f"# SET-RBM parameters: Weight decay {self.weight_decay}, zeta {self.zeta} and epsilon {self.epsilon}\n")
+            else: 
+                print("WARNING: Saving RBM that has not been trained")
+            
+            f.write(f"{self.noVisible} {self.noHiddens}\n")
+            
+            W_dense = self.W.todense('F')
+            
+            for j in range(self.noHiddens):
+                for i in range(self.noVisible):
+                    f.write(f"{W_dense[i,j]} ")
+                f.write("\n")
+            
+            for i in range(self.noVisible):
+                f.write(f"{self.bV[i]} ")
+            f.write("\n")
+
+            for j in range(self.noHiddens):
+                f.write(f"{self.bH[j]} ")
+            f.write("\n")
+
+
+
+
 if __name__ == "__main__":
     # Organizing rexeived arguments
     args = parser.parse_args()
@@ -300,7 +338,8 @@ if __name__ == "__main__":
                lengthMarkovChain=k, weight_decay=0, learning_rate=alpha, 
                zeta=0.3, testing=hasTestData, 
                save_filename=f"Results/reconErr_{filebase}.txt")
-
+    
+    setrbm.save(f"Results/{filebase}.rbm")
     
     # get reconstructed data
     # please note the very very small difference in error between this one and the one computing during training. This is the (insignificant) effect of the removed weights which are closest to zero
