@@ -18,7 +18,7 @@ import datetime
 import scipy.io as sio
 import matplotlib.pyplot as plt
 import argparse
-
+import os
 
 parser = argparse.ArgumentParser()
 
@@ -50,7 +50,12 @@ trnparams.add_argument("-k", "--length-markov-chain", default=10, type=int,
 trnparams.add_argument("-r", "--learning-rate", "--alpha", type=float,
                        help="Training learning rate")
 
-# TODO: output arguments (type of output file and rate of NLL/whatever calculation)
+outparams = parser.add_argument_group(title="Output arguments", 
+                description="DEtermine what kinf of output will be given and its characteristics")
+outparams.add_argument("-f", "--f-nll", "--frequency-performance-metrics", type=int, default=1,
+                       help="Frequency of calculation of performance estimation methods "
+                            "(f.e.: calculate NLL at every 10 epochs)")
+# TODO: type of output file?
 
 
 
@@ -112,14 +117,51 @@ class SET_RBM:
         self.bV=np.zeros(self.noVisible) #biases of the visible neurons
         self.bH = np.zeros(self.noHiddens) #biases of the hidden neurons
 
-    def fit(self, X_train, X_test, batch_size,epochs,lengthMarkovChain=2,weight_decay=0.0000002,learning_rate=0.1,zeta=0.3, testing=True, save_filename=""):
+    def fit(self, X_train, X_test, batch_size,epochs,lengthMarkovChain=2,weight_decay=0.0000002,learning_rate=0.1,zeta=0.3, testing=True, 
+            outputType="", f_nll=1, save_filename="test.txt"):
 
         # set learning parameters
         self.lengthMarkovChain=lengthMarkovChain #length of Markov chain for Contrastive Divergence
         self.weight_decay=weight_decay #weight decay
         self.learning_rate=learning_rate #learning rate
         self.zeta=zeta #control the fraction of weights removed
-
+        
+        # Determining what outputs to save
+        save_fileRecon = save_filename
+        outType = outType.lower()
+        calcNLL = False
+        calcRecErr = False
+        # if outType == "all":
+        #     calcNLL = True
+        #     calcRecErr = True
+        # TODO: Add 'all' option. Will need to rethink how to give the output filename
+        elif outType == "nll":
+            calcNLL = True
+        elif outType == "reconerror":
+            calcRecErr = True
+        else:
+            if outType != "":
+                print(f"WARNING: Cannot save output of type '{outType}'. Will not save any output!")
+            
+        
+        outF = None
+        pid = os.getpid()
+        if calcNLL:
+            # Open NLL output file 
+            outF = open(save_filename, "w")
+            outF.write(f"# NLL through RBM training for MNIST data set with connectivity pattern of type set (parameter {self.eps})\n")
+            outF.write(f"# CD-{self.lengthMarkovChain}. Seed {self.seed}, Batch size = {self.batch_size} and learning rate of {self.learnin_rate}\n")
+            outF.write(",NLL")
+            # TODO: Check if there is a self.seed
+            
+            # First data point: NLL before training
+            self.save(f"tmp_{pid}.rbm")
+            os.system(f"./ais_estimator.sh {pid}")
+            
+            with open(f"lnZ_{pid}.txt", 'r') as lnF:
+                    nll = float(lnF.readline())
+                    outF.write(f"0,{nll}\n")
+            
 
         minimum_reconstructin_error=100000
         metrics=np.zeros((epochs,2))
@@ -143,7 +185,17 @@ class SET_RBM:
             metrics[i, 0] = reconstruction_error_train
             print ("\nSET-RBM Epoch ",i)
             print ("Training time: ",t2-t1,"; Reconstruction error train: ",reconstruction_error_train)
+            
+            # Calculate and save NLL at current epoch
+            if calcNLL:
+                if (i+1)%f_nll == 0:
+                    self.save(f"tmp_{pid}.rbm")
+                    os.system(f"./ais_estimator.sh {pid}")
 
+                    with open(f"lnZ_{pid}.txt", 'r') as lnF:
+                        nll = float(lnF.readline())
+                        outF.write(f"{i+1},{nll}\n")
+            
             # test model performance on the test data at each epoch
             # this part is useful to understand model performance and can be commented for production settings
             if (testing):
@@ -165,8 +217,11 @@ class SET_RBM:
             print("Weights evolution time ", t6 - t5)
 
             #save performance metrics values in a file
-            if (save_filename!=""):
+            if calcRecErr:
                 np.savetxt(save_filename,metrics)
+                
+        if calcNLL:
+            outF.close()
 
     def runMarkovChain(self,x):
         self.DV=x
@@ -269,6 +324,7 @@ if __name__ == "__main__":
     epochs = args.epochs
     k = args.length_markov_chain
     alpha = args.learning_rate
+    f_nll = args.frequency_performance_metrics
     
     filebase = f"{dataset}_set-{eps}_H{H}_CD-{k}_lr{alpha}_mBatch{bsize}_iter{epochs}"
     
@@ -299,9 +355,8 @@ if __name__ == "__main__":
                batch_size=bsize, epochs=epochs, 
                lengthMarkovChain=k, weight_decay=0, learning_rate=alpha, 
                zeta=0.3, testing=hasTestData, 
-               save_filename=f"Results/reconErr_{filebase}.txt")
+               "nll", save_filename=f"Results/nll_{filebase}.csv", f_nll)   # f"Results/reconErr_{filebase}.txt"
 
-    
     # get reconstructed data
     # please note the very very small difference in error between this one and the one computing during training. This is the (insignificant) effect of the removed weights which are closest to zero
     if hasTestData:
