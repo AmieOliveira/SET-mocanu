@@ -52,7 +52,7 @@ trnparams.add_argument("-r", "--learning-rate", "--alpha", type=float,
 
 outparams = parser.add_argument_group(title="Output arguments", 
                 description="DEtermine what kinf of output will be given and its characteristics")
-outparams.add_argument("-f", "--f-nll", "--frequency-performance-metrics", type=int, default=1,
+outparams.add_argument("-f", "--frequency-performance-metrics", "--f-nll", type=int, default=1,
                        help="Frequency of calculation of performance estimation methods "
                             "(f.e.: calculate NLL at every 10 epochs)")
 # TODO: type of output file?
@@ -115,12 +115,13 @@ class SET_RBM:
 
         self.epochs = None #number of training epochs
         self.batch_size = None #size of training batches
+        self.seed = None
 
         self.W=createSparseWeights(self.epsilon,self.noVisible,self.noHiddens) # create weights sparse matrix
         self.bV=np.zeros(self.noVisible) #biases of the visible neurons
         self.bH = np.zeros(self.noHiddens) #biases of the hidden neurons
 
-    def fit(self, X_train, X_test, batch_size,epochs,lengthMarkovChain=2,weight_decay=0.0000002,learning_rate=0.1,zeta=0.3, testing=True, 
+    def fit(self, X_train, X_test, batch_size,epochs,lengthMarkovChain=2,weight_decay=0.0000002,learning_rate=0.1,zeta=0.3, seed=None, testing=True, 
             outputType="", f_nll=1, save_filename="test.txt"):
 
         # set learning parameters
@@ -130,17 +131,18 @@ class SET_RBM:
         self.zeta=zeta #control the fraction of weights removed
         self.epochs = epochs
         self.batch_size = batch_size
+        self.seed = seed
         
         # Determining what outputs to save
         save_fileRecon = save_filename
-        outType = outType.lower()
+        outType = outputType.lower()
         calcNLL = False
         calcRecErr = False
         # if outType == "all":
         #     calcNLL = True
         #     calcRecErr = True
         # TODO: Add 'all' option. Will need to rethink how to give the output filename
-        elif outType == "nll":
+        if outType == "nll":
             calcNLL = True
         elif outType == "reconerror":
             calcRecErr = True
@@ -154,8 +156,8 @@ class SET_RBM:
         pid = os.getpid()
         if calcNLL:
             outF = open(save_filename, "w")
-            outF.write(f"# NLL through RBM training for MNIST data set with connectivity pattern of type set (parameter {self.eps})\n")
-            outF.write(f"# CD-{self.lengthMarkovChain}. Seed {self.seed}, Batch size = {self.batch_size} and learning rate of {self.learnin_rate}\n")
+            outF.write(f"# NLL through RBM training for MNIST data set with connectivity pattern of type set (parameter {self.epsilon})\n")
+            outF.write(f"# CD-{self.lengthMarkovChain}. Seed {self.seed}, Batch size = {self.batch_size} and learning rate of {self.learning_rate}\n")
             outF.write(",NLL")
             # TODO: Check if there is a self.seed
             
@@ -393,7 +395,7 @@ if __name__ == "__main__":
                batch_size=bsize, epochs=epochs, 
                lengthMarkovChain=k, weight_decay=0, learning_rate=alpha, 
                zeta=0.3, testing=hasTestData, 
-               "nll", save_filename=f"Results/nll_{filebase}.csv", f_nll)   # f"Results/reconErr_{filebase}.txt"
+               outputType="nll", save_filename=f"nll_{filebase}.csv", f_nll=f_nll)   # f"Results/reconErr_{filebase}.txt"
 
     
     # get reconstructed data
