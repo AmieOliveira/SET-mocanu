@@ -396,7 +396,8 @@ if __name__ == "__main__":
                lengthMarkovChain=k, weight_decay=0, learning_rate=alpha, 
                zeta=0.3, testing=hasTestData, 
                outputType="nll", save_filename=f"nll_{filebase}.csv", f_nll=f_nll)   # f"Results/reconErr_{filebase}.txt"
-
+    
+    setrbm.save(f"{filebase}.rbm")
     
     # get reconstructed data
     # please note the very very small difference in error between this one and the one computing during training. This is the (insignificant) effect of the removed weights which are closest to zero
