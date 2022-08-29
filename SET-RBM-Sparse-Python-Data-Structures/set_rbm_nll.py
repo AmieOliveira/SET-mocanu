@@ -12,6 +12,8 @@
 import numpy as np
 from scipy.sparse import lil_matrix
 from scipy.sparse import dok_matrix
+from scipy.sparse import csr_matrix
+from math import log, exp
 #the "sparseoperations" Cython library was tested in Ubuntu 16.04. Please note that you may encounter some "solvable" issues if you compile it in Windows.
 import sparseoperations
 import datetime
@@ -153,21 +155,15 @@ class SET_RBM:
         
         # Setting up NLL output file
         outF = None
-        pid = os.getpid()
         if calcNLL:
             outF = open(save_filename, "w")
             outF.write(f"# NLL through RBM training for MNIST data set with connectivity pattern of type set (parameter {self.epsilon})\n")
             outF.write(f"# CD-{self.lengthMarkovChain}. Seed {self.seed}, Batch size = {self.batch_size} and learning rate of {self.learning_rate}\n")
-            outF.write(",NLL")
-            # TODO: Check if there is a self.seed
+            outF.write(",NLL\n")
             
             # First data point: NLL before training
-            self.save(f"tmp_{pid}.rbm")
-            os.system(f"./ais_estimator.sh {pid}")
-            
-            with open(f"lnZ_{pid}.txt", 'r') as lnF:
-                    nll = float(lnF.readline())
-                    outF.write(f"0,{nll}\n")
+            nll = self.calculateNLL(X_train)
+            outF.write(f"0,{nll}\n")
         
         
         minimum_reconstructin_error=100000
@@ -176,9 +172,9 @@ class SET_RBM:
 
         for i in range (self.epochs):
             # Shuffle the data
-            seed = np.arange(X_train.shape[0])
-            np.random.shuffle(seed)
-            x_ = X_train[seed]
+            shf = np.arange(X_train.shape[0])
+            np.random.shuffle(shf)
+            x_ = X_train[shf]
 
             # training
             t1 = datetime.datetime.now()
@@ -196,12 +192,8 @@ class SET_RBM:
             # Calculate and save NLL at current epoch
             if calcNLL:
                 if (i+1)%f_nll == 0:
-                    self.save(f"tmp_{pid}.rbm")
-                    os.system(f"./ais_estimator.sh {pid}")
-
-                    with open(f"lnZ_{pid}.txt", 'r') as lnF:
-                        nll = float(lnF.readline())
-                        outF.write(f"{i+1},{nll}\n")
+                    nll = self.calculateNLL(x_)   
+                    outF.write(f"{i+1},{nll}\n")
             
             # test model performance on the test data at each epoch
             # this part is useful to understand model performance and can be commented for production settings
@@ -310,6 +302,31 @@ class SET_RBM:
         self.bV=self.bV+self.learning_rate*(np.mean(self.DV,axis=0)-np.mean(self.MV,axis=0))-self.weight_decay*self.bV
         self.bH = self.bH + self.learning_rate * (np.mean(self.DH, axis=0) - np.mean(self.MH, axis=0)) - self.weight_decay * self.bH
 
+    def freeEnergy(self, datapoint):
+        energy = -np.dot(datapoint, self.bV)
+        tmp = datapoint.transpose() * csr_matrix(self.W)
+        for i in range(self.noHiddens):
+            energy -= log( 1 + exp( tmp[i] + self.bH[i] ) )
+        return energy
+
+    def calculateNLL(self, dataset, lnZ=None):
+        print("Starting NLL calculation")
+        pid = os.getpid()
+        nll = 0
+        siz = 0
+        for data in dataset:
+            nll += self.freeEnergy(data)
+            siz += 1
+        nll /= siz
+
+        if not lnZ:
+            self.save(f"tmp_{pid}.rbm")
+            os.system(f"./ais_estimator.sh {pid}")
+            with open(f"lnZ_{pid}.txt", 'r') as lnF:
+                lnZ = float(lnF.readline())
+        nll += lnZ
+        return nll
+
     def save(self, filename="setrbm.rbm"):
         with open(filename, "w") as f:
             f.write("# RBM parameters\n")
@@ -327,18 +344,48 @@ class SET_RBM:
             
             W_dense = self.W.todense('F')
             
-            for j in range(self.noHiddens):
-                for i in range(self.noVisible):
-                    f.write(f"{W_dense[i,j]} ")
+            for i in range(self.noHiddens):
+                for j in range(self.noVisible):
+                    f.write(f"{W_dense[j,i]} ")
                 f.write("\n")
             
-            for i in range(self.noVisible):
-                f.write(f"{self.bV[i]} ")
+            for j in range(self.noVisible):
+                f.write(f"{self.bV[j]} ")
             f.write("\n")
 
-            for j in range(self.noHiddens):
-                f.write(f"{self.bH[j]} ")
+            for i in range(self.noHiddens):
+                f.write(f"{self.bH[i]} ")
             f.write("\n")
+
+    def load(self, filename):
+        print(f"Opening file {filename}")
+        with open(filename, "r") as f:
+            line = f.readline()
+            while line[0] == "#":
+                line = f.readline()
+
+            sizes = line.split(" ")
+            X = int(sizes[0])
+            H = int(sizes[1])
+
+            self.W=lil_matrix((X,H))
+            for i in range(H):
+                line = f.readline()
+                weights = line.split(" ")
+                for j in range(X):
+                    w = float(weights[j])
+                    if w != 0:
+                        self.W[j,i] = w
+
+            line = f.readline()
+            biases = line.split(" ")
+            for j in range(X):
+                self.bV[j] = float(biases[j])
+
+            line = f.readline()
+            biases = line.split(" ")
+            for i in range(H):
+                self.bH[i] = float(biases[i])
 
 
 
